@@ -14,6 +14,9 @@ from app.bot.keyboards.main_menu import build_main_menu
 from app.bot.handlers.subscriptions import (
     register_handlers as register_subscription_handlers,
 )
+from app.bot.handlers.payments import (
+    register_handlers as register_payment_handlers,
+)
 
 router = Router(name="start")
 logger = logging.getLogger(__name__)
@@ -53,3 +56,4 @@ def register_handlers(dp: Dispatcher) -> None:
     dp.callback_query.filter(AdminFilter())
     dp.include_router(router)
     register_subscription_handlers(dp)
+    register_payment_handlers(dp)
