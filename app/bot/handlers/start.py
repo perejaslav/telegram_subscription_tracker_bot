@@ -11,6 +11,9 @@ from aiogram.types import Message
 
 from app.bot.filters import AdminFilter
 from app.bot.keyboards.main_menu import build_main_menu
+from app.bot.handlers.subscriptions import (
+    register_handlers as register_subscription_handlers,
+)
 
 router = Router(name="start")
 logger = logging.getLogger(__name__)
@@ -28,7 +31,9 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     """Greet the owner and show the main menu; reset any FSM state."""
     await state.clear()
     await message.answer(GREETING, reply_markup=build_main_menu())
-    logger.info("User %s opened /start", message.from_user.id if message.from_user else "?")
+    logger.info(
+        "User %s opened /start", message.from_user.id if message.from_user else "?"
+    )
 
 
 async def on_unauthorized(message: Message) -> None:
@@ -47,3 +52,4 @@ def register_handlers(dp: Dispatcher) -> None:
     dp.message.filter(AdminFilter())
     dp.callback_query.filter(AdminFilter())
     dp.include_router(router)
+    register_subscription_handlers(dp)

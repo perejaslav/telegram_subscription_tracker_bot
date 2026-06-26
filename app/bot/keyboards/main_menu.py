@@ -17,4 +17,8 @@ MAIN_MENU_BUTTONS: list[list[str]] = [
 def build_main_menu() -> ReplyKeyboardMarkup:
     """Build the persistent main-menu keyboard."""
     rows = [[KeyboardButton(text=text) for text in row] for row in MAIN_MENU_BUTTONS]
-    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, input_field_placeholder="Выберите действие…")
+    return ReplyKeyboardMarkup(
+        keyboard=rows,
+        resize_keyboard=True,
+        input_field_placeholder="Выберите действие…",
+    )
