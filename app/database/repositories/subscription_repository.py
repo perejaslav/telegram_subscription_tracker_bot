@@ -51,9 +51,7 @@ class SubscriptionRepository:
     def list_upcoming(
         self, user_id: int, *, before: date, statuses: Sequence[str] | None = None
     ) -> Sequence[Subscription]:
-        target_statuses = (
-            list(statuses) if statuses else [SubscriptionStatus.ACTIVE.value]
-        )
+        target_statuses = list(statuses) if statuses else [SubscriptionStatus.ACTIVE.value]
         stmt = (
             select(Subscription)
             .where(

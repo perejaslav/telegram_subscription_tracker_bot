@@ -37,26 +37,10 @@ async def export_menu(message: Message) -> None:
         "Выберите, что выгрузить:",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="📋 Подписки (CSV)", callback_data="export:subs"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="💳 Платежи (CSV)", callback_data="export:pays"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="📦 Резервная копия БД", callback_data="export:backup"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="🔙 В главное меню", callback_data="sub:back"
-                    )
-                ],
+                [InlineKeyboardButton(text="📋 Подписки (CSV)", callback_data="export:subs")],
+                [InlineKeyboardButton(text="💳 Платежи (CSV)", callback_data="export:pays")],
+                [InlineKeyboardButton(text="📦 Резервная копия БД", callback_data="export:backup")],
+                [InlineKeyboardButton(text="🔙 В главное меню", callback_data="sub:back")],
             ]
         ),
     )
@@ -67,9 +51,7 @@ async def export_subs(callback: Message, bot: Bot) -> None:  # type: ignore[over
     user_id = callback.from_user.id if callback.from_user else 0
     with SessionLocal() as session:
         result = ExportService(session).export_subscriptions(user_id)
-    await _send_file(
-        callback.message, bot, result.path, caption="📋 Экспорт подписок (CSV)"
-    )
+    await _send_file(callback.message, bot, result.path, caption="📋 Экспорт подписок (CSV)")
     await callback.answer("Готово")
 
 
@@ -78,9 +60,7 @@ async def export_pays(callback: Message, bot: Bot) -> None:  # type: ignore[over
     user_id = callback.from_user.id if callback.from_user else 0
     with SessionLocal() as session:
         result = ExportService(session).export_payments(user_id)
-    await _send_file(
-        callback.message, bot, result.path, caption="💳 Экспорт платежей (CSV)"
-    )
+    await _send_file(callback.message, bot, result.path, caption="💳 Экспорт платежей (CSV)")
     await callback.answer("Готово")
 
 
@@ -96,9 +76,7 @@ async def export_backup(callback: Message, bot: Bot) -> None:  # type: ignore[ov
         )
         await callback.answer()
         return
-    await _send_file(
-        callback.message, bot, result.path, caption="📦 Резервная копия базы"
-    )
+    await _send_file(callback.message, bot, result.path, caption="📦 Резервная копия базы")
     await callback.answer("Готово")
 
 

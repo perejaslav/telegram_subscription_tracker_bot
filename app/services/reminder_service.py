@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Iterable
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError

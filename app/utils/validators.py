@@ -100,13 +100,11 @@ def validate_optional_text(value: str, *, max_length: int, field: str) -> str | 
 
 def validate_optional_url(value: str) -> str | None:
     trimmed = value.strip()
-    if not trimmed:
+    if not trimmed or trimmed == "-":
         return None
     parsed = urlparse(trimmed)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValidationError(
-            "Введите корректную ссылку, начинающуюся с http:// или https://."
-        )
+        raise ValidationError("Введите корректную ссылку, начинающуюся с http:// или https://.")
     if len(trimmed) > 500:
         raise ValidationError("Ссылка не должна превышать 500 символов.")
     return trimmed

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -77,15 +77,15 @@ class SubscriptionService:
                 parsed = parse_user_date(value)
                 return parsed.isoformat()
             if field == "payment_method":
-                return validate_optional_text(
-                    value, max_length=100, field="Способ оплаты"
-                )
+                return validate_optional_text(value, max_length=100, field="Способ оплаты")
             if field == "management_url":
                 return validate_optional_url(value)
             if field == "note":
                 return validate_optional_text(value, max_length=1000, field="Заметка")
-        except ValidationError as exc:
-            raise ValidationError(str(exc)) from exc
+        except (ValidationError, ValueError) as exc:
+            if isinstance(exc, ValidationError):
+                raise
+            raise ValidationError("Дата должна быть в формате ДД.ММ.ГГГГ.") from exc
         raise ValidationError(f"Неизвестное поле: {field}")
 
     # ------------------------------------------------------------------
@@ -137,7 +137,7 @@ class SubscriptionService:
         if new_status == SubscriptionStatus.ARCHIVED:
             from datetime import datetime
 
-            subscription.archived_at = datetime.utcnow()
+            subscription.archived_at = datetime.now(UTC).replace(tzinfo=None)
         self.session.commit()
         logger.info("Subscription %s status → %s", subscription_id, new_status.value)
         return subscription

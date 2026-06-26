@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import calendar
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Iterable
 
 from sqlalchemy.orm import Session
 
@@ -56,16 +56,12 @@ class ReportService:
         today = today or date.today()
         active = list(self.repo.list_by_status(user_id, SubscriptionStatus.ACTIVE))
         paused = list(self.repo.list_by_status(user_id, SubscriptionStatus.PAUSED))
-        cancelled = list(
-            self.repo.list_by_status(user_id, SubscriptionStatus.CANCELLED)
-        )
+        cancelled = list(self.repo.list_by_status(user_id, SubscriptionStatus.CANCELLED))
         archived = list(self.repo.list_by_status(user_id, SubscriptionStatus.ARCHIVED))
 
         totals = _aggregate_totals(active)
         by_category = _aggregate_by_category(active)
-        upcoming = list(
-            self.repo.list_upcoming(user_id, before=today + timedelta(days=30))
-        )
+        upcoming = list(self.repo.list_upcoming(user_id, before=today + timedelta(days=30)))
 
         return SummaryReport(
             active_count=len(active),
@@ -81,9 +77,7 @@ class ReportService:
         self, user_id: int, *, days: int = 30, today: date | None = None
     ) -> list[Subscription]:
         today = today or date.today()
-        return list(
-            self.repo.list_upcoming(user_id, before=today + timedelta(days=days))
-        )
+        return list(self.repo.list_upcoming(user_id, before=today + timedelta(days=days)))
 
     # ------------------------------------------------------------------
     # Formatting helpers (used by bot handlers).
@@ -117,9 +111,7 @@ class ReportService:
             lines.append("")
             lines.append("<b>По категориям (месяц):</b>")
             for cat, totals in sorted(report.by_category.items()):
-                parts = ", ".join(
-                    format_money(t.monthly_equivalent, t.currency) for t in totals
-                )
+                parts = ", ".join(format_money(t.monthly_equivalent, t.currency) for t in totals)
                 lines.append(f"  • {cat}: {parts}")
 
         if report.upcoming:
@@ -142,9 +134,7 @@ class ReportService:
 
 
 def _aggregate_totals(subscriptions: Iterable[Subscription]) -> list[CurrencyTotal]:
-    buckets: dict[str, dict[str, float]] = defaultdict(
-        lambda: {"month": 0.0, "year": 0.0}
-    )
+    buckets: dict[str, dict[str, float]] = defaultdict(lambda: {"month": 0.0, "year": 0.0})
     for sub in subscriptions:
         factor = _PERIODS_PER_MONTH.get(sub.billing_period, 0.0)
         if factor == 0.0:

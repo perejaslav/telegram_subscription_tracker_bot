@@ -21,11 +21,7 @@ def pay_actions_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
                     callback_data=f"pay:{subscription_id}:custom_amount",
                 )
             ],
-            [
-                InlineKeyboardButton(
-                    text="🔙 Назад", callback_data=f"sub:{subscription_id}:open"
-                )
-            ],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data=f"sub:{subscription_id}:open")],
         ]
     )
 
@@ -39,11 +35,7 @@ def pay_confirm_with_amount_keyboard(subscription_id: int) -> InlineKeyboardMark
                     callback_data=f"pay:{subscription_id}:save",
                 )
             ],
-            [
-                InlineKeyboardButton(
-                    text="🔙 Назад", callback_data=f"sub:{subscription_id}:open"
-                )
-            ],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data=f"sub:{subscription_id}:open")],
         ]
     )
 
@@ -57,11 +49,7 @@ def pay_skip_note_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
                     callback_data=f"pay:{subscription_id}:note_skip",
                 )
             ],
-            [
-                InlineKeyboardButton(
-                    text="🔙 Назад", callback_data=f"sub:{subscription_id}:open"
-                )
-            ],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data=f"sub:{subscription_id}:open")],
         ]
     )
 
@@ -75,11 +63,7 @@ def pay_manual_date_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
                     callback_data=f"pay:{subscription_id}:manual_skip",
                 )
             ],
-            [
-                InlineKeyboardButton(
-                    text="🔙 Назад", callback_data=f"sub:{subscription_id}:open"
-                )
-            ],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data=f"sub:{subscription_id}:open")],
         ]
     )
 

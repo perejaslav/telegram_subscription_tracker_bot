@@ -36,9 +36,7 @@ class ExportService:
         self.exports_dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
-    def export_subscriptions(
-        self, user_id: int, *, today: date | None = None
-    ) -> ExportResult:
+    def export_subscriptions(self, user_id: int, *, today: date | None = None) -> ExportResult:
         today = today or date.today()
         subs = list(self.sub_repo.list_for_user(user_id))
         path = self._resolve_path("subscriptions", today)
@@ -75,12 +73,8 @@ class ExportService:
                         s.management_url or "",
                         s.note or "",
                         s.status,
-                        s.created_at.isoformat(sep=" ", timespec="seconds")
-                        if s.created_at
-                        else "",
-                        s.updated_at.isoformat(sep=" ", timespec="seconds")
-                        if s.updated_at
-                        else "",
+                        s.created_at.isoformat(sep=" ", timespec="seconds") if s.created_at else "",
+                        s.updated_at.isoformat(sep=" ", timespec="seconds") if s.updated_at else "",
                         s.archived_at.isoformat(sep=" ", timespec="seconds")
                         if s.archived_at
                         else "",
@@ -89,9 +83,7 @@ class ExportService:
         logger.info("Exported %s subscriptions to %s", len(subs), path)
         return ExportResult(path=path, rows=len(subs))
 
-    def export_payments(
-        self, user_id: int, *, today: date | None = None
-    ) -> ExportResult:
+    def export_payments(self, user_id: int, *, today: date | None = None) -> ExportResult:
         today = today or date.today()
         payments = list(self._iter_payments(user_id))
         path = self._resolve_path("payments", today)
@@ -118,9 +110,7 @@ class ExportService:
                         f"{p.amount:.2f}",
                         p.currency,
                         p.note or "",
-                        p.created_at.isoformat(sep=" ", timespec="seconds")
-                        if p.created_at
-                        else "",
+                        p.created_at.isoformat(sep=" ", timespec="seconds") if p.created_at else "",
                     ]
                 )
         logger.info("Exported %s payments to %s", len(payments), path)
@@ -141,9 +131,7 @@ class ExportService:
         candidate = self.exports_dir / f"{prefix}_{today.isoformat()}_{suffix}.csv"
         counter = 1
         while candidate.exists():
-            candidate = self.exports_dir / (
-                f"{prefix}_{today.isoformat()}_{suffix}_{counter}.csv"
-            )
+            candidate = self.exports_dir / (f"{prefix}_{today.isoformat()}_{suffix}_{counter}.csv")
             counter += 1
         return candidate
 

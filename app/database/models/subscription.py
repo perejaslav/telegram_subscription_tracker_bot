@@ -74,12 +74,12 @@ class Subscription(Base):
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    payments: Mapped[list["Payment"]] = relationship(
+    payments: Mapped[list[Payment]] = relationship(
         back_populates="subscription",
         cascade="all, delete-orphan",
         order_by="Payment.paid_at.desc()",
     )
-    reminder_logs: Mapped[list["ReminderLog"]] = relationship(
+    reminder_logs: Mapped[list[ReminderLog]] = relationship(
         back_populates="subscription",
         cascade="all, delete-orphan",
     )
@@ -143,15 +143,9 @@ class UserSettings(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(Integer, nullable=False)
     timezone: Mapped[str] = mapped_column(String(50), nullable=False, default="UTC")
-    reminder_days: Mapped[str] = mapped_column(
-        String(100), nullable=False, default="1,3,7"
-    )
-    reminder_check_time: Mapped[str] = mapped_column(
-        String(5), nullable=False, default="09:00"
-    )
-    default_currency: Mapped[str] = mapped_column(
-        String(10), nullable=False, default="RUB"
-    )
+    reminder_days: Mapped[str] = mapped_column(String(100), nullable=False, default="1,3,7")
+    reminder_check_time: Mapped[str] = mapped_column(String(5), nullable=False, default="09:00")
+    default_currency: Mapped[str] = mapped_column(String(10), nullable=False, default="RUB")
     show_archived: Mapped[bool] = mapped_column(nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), nullable=False

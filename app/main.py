@@ -15,8 +15,8 @@ from aiogram import Bot, Dispatcher
 
 from app.bot.handlers import start as start_handler
 from app.config.settings import settings
-from app.logging.setup import setup_logging
 from app.database.engine import engine  # noqa: F401  (import to ensure init)
+from app.logging.setup import setup_logging
 from app.scheduler.jobs import build_scheduler
 
 logger = logging.getLogger(__name__)

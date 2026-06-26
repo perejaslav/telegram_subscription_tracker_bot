@@ -91,9 +91,7 @@ async def add_name(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(name=value)
     await state.set_state(AddSubscriptionStates.category)
-    await message.answer(
-        "Выберите <b>категорию</b>:", reply_markup=categories_keyboard()
-    )
+    await message.answer("Выберите <b>категорию</b>:", reply_markup=categories_keyboard())
 
 
 @router.callback_query(AddSubscriptionStates.category, F.data.startswith("add:cat:"))
@@ -130,14 +128,10 @@ async def add_currency(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(currency=value)
     await state.set_state(AddSubscriptionStates.billing_period)
-    await message.answer(
-        "Выберите <b>период оплаты</b>:", reply_markup=billing_periods_keyboard()
-    )
+    await message.answer("Выберите <b>период оплаты</b>:", reply_markup=billing_periods_keyboard())
 
 
-@router.callback_query(
-    AddSubscriptionStates.billing_period, F.data.startswith("add:bp:")
-)
+@router.callback_query(AddSubscriptionStates.billing_period, F.data.startswith("add:bp:"))
 async def add_billing_period(callback: CallbackQuery, state: FSMContext) -> None:
     period = (callback.data or "").split(":", 2)[2]
     await state.update_data(billing_period=period)
@@ -317,17 +311,13 @@ async def _render_list(
             title = STATUS_LABELS.get(status.value, status.value)
 
     if not items:
-        await message.answer(
-            "Нет подписок в этой категории.", reply_markup=build_main_menu()
-        )
+        await message.answer("Нет подписок в этой категории.", reply_markup=build_main_menu())
         return
 
     total_pages = max(1, (len(items) + PAGE_SIZE - 1) // PAGE_SIZE)
     page = max(0, min(page, total_pages - 1))
     chunk = items[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
-    buttons = [
-        (sub.id, format_subscription_row(sub).replace("• ", "")) for sub in chunk
-    ]
+    buttons = [(sub.id, format_subscription_row(sub).replace("• ", "")) for sub in chunk]
     await message.answer(
         f"<b>{title}</b> (стр. {page + 1}/{total_pages}):",
         reply_markup=subscriptions_list_keyboard(
@@ -362,34 +352,26 @@ async def open_card(callback: CallbackQuery, state: FSMContext) -> None:
 async def back_to_menu(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await callback.message.edit_text("Главное меню:")
-    await callback.message.answer(
-        "👋 Выберите действие:", reply_markup=build_main_menu()
-    )
+    await callback.message.answer("👋 Выберите действие:", reply_markup=build_main_menu())
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("sub:"), F.data.endswith(":pause"))
 async def pause_sub(callback: CallbackQuery, state: FSMContext) -> None:
     sub_id = int((callback.data or "").split(":")[1])
-    await _change_status(
-        callback, state, sub_id, SubscriptionStatus.PAUSED, "⏸ Приостановлена"
-    )
+    await _change_status(callback, state, sub_id, SubscriptionStatus.PAUSED, "⏸ Приостановлена")
 
 
 @router.callback_query(F.data.startswith("sub:"), F.data.endswith(":cancel"))
 async def cancel_sub(callback: CallbackQuery, state: FSMContext) -> None:
     sub_id = int((callback.data or "").split(":")[1])
-    await _change_status(
-        callback, state, sub_id, SubscriptionStatus.CANCELLED, "❌ Отменена"
-    )
+    await _change_status(callback, state, sub_id, SubscriptionStatus.CANCELLED, "❌ Отменена")
 
 
 @router.callback_query(F.data.startswith("sub:"), F.data.endswith(":archive"))
 async def archive_sub(callback: CallbackQuery, state: FSMContext) -> None:
     sub_id = int((callback.data or "").split(":")[1])
-    await _change_status(
-        callback, state, sub_id, SubscriptionStatus.ARCHIVED, "📦 В архиве"
-    )
+    await _change_status(callback, state, sub_id, SubscriptionStatus.ARCHIVED, "📦 В архиве")
 
 
 @router.callback_query(F.data.startswith("sub:"), F.data.endswith(":delete"))
@@ -433,18 +415,14 @@ async def choose_field(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-@router.callback_query(
-    EditSubscriptionStates.choose_field, F.data.startswith("edit:field:")
-)
+@router.callback_query(EditSubscriptionStates.choose_field, F.data.startswith("edit:field:"))
 async def pick_field(callback: CallbackQuery, state: FSMContext) -> None:
     field = (callback.data or "").split(":", 2)[2]
     await state.update_data(edit_field=field)
     await state.set_state(EditSubscriptionStates.new_value)
     prompt = _field_prompt(field)
     if field in {"category", "billing_period"}:
-        keyboard = (
-            categories_keyboard() if field == "category" else billing_periods_keyboard()
-        )
+        keyboard = categories_keyboard() if field == "category" else billing_periods_keyboard()
         await callback.message.edit_text(prompt, reply_markup=keyboard)
     else:
         await callback.message.edit_text(prompt)
@@ -466,9 +444,7 @@ async def edit_category_callback(callback: CallbackQuery, state: FSMContext) -> 
 
 
 @router.callback_query(EditSubscriptionStates.new_value, F.data.startswith("add:bp:"))
-async def edit_billing_period_callback(
-    callback: CallbackQuery, state: FSMContext
-) -> None:
+async def edit_billing_period_callback(callback: CallbackQuery, state: FSMContext) -> None:
     period = (callback.data or "").split(":", 2)[2]
     await _apply_edit(callback, state, raw_value=period)
 
@@ -486,9 +462,7 @@ async def edit_new_value_text(message: Message, state: FSMContext) -> None:
     await _apply_edit_text(message, state)
 
 
-async def _apply_edit(
-    callback: CallbackQuery, state: FSMContext, *, raw_value: str
-) -> None:
+async def _apply_edit(callback: CallbackQuery, state: FSMContext, *, raw_value: str) -> None:
     data = await state.get_data()
     sub_id = data.get("active_subscription_id")
     field = data.get("edit_field")
@@ -499,9 +473,7 @@ async def _apply_edit(
     user_id = callback.from_user.id
     try:
         with SessionLocal() as session:
-            sub = SubscriptionService(session).update_field(
-                int(sub_id), user_id, field, raw_value
-            )
+            sub = SubscriptionService(session).update_field(int(sub_id), user_id, field, raw_value)
     except (ValidationError, SubscriptionNotFoundError) as exc:
         await callback.message.answer(f"Ошибка: {exc}")
         await state.clear()
@@ -554,9 +526,7 @@ async def _change_status(
     user_id = callback.from_user.id
     try:
         with SessionLocal() as session:
-            sub = SubscriptionService(session).change_status(
-                sub_id, user_id, new_status
-            )
+            sub = SubscriptionService(session).change_status(sub_id, user_id, new_status)
     except SubscriptionNotFoundError as exc:
         await callback.message.answer(str(exc))
         await callback.answer()
@@ -598,9 +568,7 @@ def _field_prompt(field: str) -> str:
 
 def _cancel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="add:cancel")]
-        ]
+        inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="add:cancel")]]
     )
 
 

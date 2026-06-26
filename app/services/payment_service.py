@@ -53,17 +53,16 @@ class PaymentService:
         if subscription is None or subscription.user_id != user_id:
             raise SubscriptionNotFoundError(f"Подписка #{subscription_id} не найдена.")
         if subscription.status == SubscriptionStatus.ARCHIVED.value:
-            raise ArchivedSubscriptionError(
-                "Нельзя отметить архивную подписку как оплаченную."
-            )
+            raise ArchivedSubscriptionError("Нельзя отметить архивную подписку как оплаченную.")
 
-        effective_amount = (
-            float(amount) if isinstance(amount, (int, float)) else _parse_amount(amount)
-        )
+        if amount is None or amount == "":
+            effective_amount = float(subscription.price)
+        elif isinstance(amount, (int, float)):
+            effective_amount = float(amount)
+        else:
+            effective_amount = _parse_amount(amount)
         effective_currency = (currency or subscription.currency).strip().upper()
-        effective_note = validate_optional_text(
-            note or "", max_length=500, field="Комментарий"
-        )
+        effective_note = validate_optional_text(note or "", max_length=500, field="Комментарий")
         effective_date = paid_at or date.today()
 
         payment = Payment(
@@ -110,17 +109,13 @@ class PaymentService:
             raise SubscriptionNotFoundError(f"Подписка #{subscription_id} не найдена.")
         subscription.next_billing_date = new_date
         self.session.commit()
-        logger.info(
-            "Manual next_billing_date for sub %s set to %s", subscription.id, new_date
-        )
+        logger.info("Manual next_billing_date for sub %s set to %s", subscription.id, new_date)
         return subscription
 
     # ------------------------------------------------------------------
     # History
     # ------------------------------------------------------------------
-    def history(
-        self, subscription_id: int, user_id: int, *, limit: int = 20
-    ) -> list[Payment]:
+    def history(self, subscription_id: int, user_id: int, *, limit: int = 20) -> list[Payment]:
         subscription = self.sub_repo.get(subscription_id)
         if subscription is None or subscription.user_id != user_id:
             raise SubscriptionNotFoundError(f"Подписка #{subscription_id} не найдена.")

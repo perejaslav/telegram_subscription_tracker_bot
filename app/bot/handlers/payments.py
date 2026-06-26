@@ -70,9 +70,7 @@ async def choose_subscription_to_pay(message: Message, state: FSMContext) -> Non
             .all()
         )
     if not subs:
-        await message.answer(
-            "Нет активных подписок для оплаты.", reply_markup=build_main_menu()
-        )
+        await message.answer("Нет активных подписок для оплаты.", reply_markup=build_main_menu())
         return
     rows = [
         [
@@ -103,10 +101,7 @@ async def choose_subscription_for_history(message: Message) -> None:
     if not subs:
         await message.answer("Нет подписок.", reply_markup=build_main_menu())
         return
-    rows = [
-        [InlineKeyboardButton(text=s.name, callback_data=f"hist:{s.id}:open")]
-        for s in subs
-    ]
+    rows = [[InlineKeyboardButton(text=s.name, callback_data=f"hist:{s.id}:open")] for s in subs]
     rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="sub:back")])
     await message.answer(
         "История по подписке:",
@@ -267,11 +262,7 @@ async def pay_note_skip(callback: CallbackQuery, state: FSMContext) -> None:
             f"✅ Оплата записана:\n\n{format_subscription_card(sub)}",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="📋 Мои подписки", callback_data="sub:back"
-                        )
-                    ]
+                    [InlineKeyboardButton(text="📋 Мои подписки", callback_data="sub:back")]
                 ]
             ),
         )
@@ -313,11 +304,7 @@ async def pay_save(callback: CallbackQuery, state: FSMContext) -> None:
             f"✅ Оплата записана:\n\n{format_subscription_card(sub)}",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="📋 Мои подписки", callback_data="sub:back"
-                        )
-                    ]
+                    [InlineKeyboardButton(text="📋 Мои подписки", callback_data="sub:back")]
                 ]
             ),
         )
@@ -361,9 +348,7 @@ async def pay_manual_input(message: Message, state: FSMContext) -> None:
         return
     user_id = message.from_user.id if message.from_user else 0
     with SessionLocal() as session:
-        sub = PaymentService(session).set_next_billing_date(
-            int(sub_id), user_id, new_date
-        )
+        sub = PaymentService(session).set_next_billing_date(int(sub_id), user_id, new_date)
     await state.clear()
     await message.answer(
         f"✅ Новая дата списания: {format_date(sub.next_billing_date)}",

@@ -1,7 +1,7 @@
 [project]
 name = "telegram-subscription-tracker-bot"
 version = "0.1.0"
-description = "Add your description here"
+description = "Telegram-бот для личного учёта платных подписок (aiogram 3 + SQLAlchemy + APScheduler)."
 requires-python = ">=3.12"
 dependencies = [
     "aiogram>=3.13",
@@ -21,3 +21,24 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "ruff>=0.15.20",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S"]
+ignore = [
+    "E501",   # line length is enforced by the formatter
+    "B008",   # FastAPI-style defaults in function calls are common
+    "S101",   # asserts are fine in tests / fixtures
+    "UP042",  # str, Enum is intentional for SQLAlchemy compatibility
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S105", "S106"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"

@@ -14,9 +14,7 @@ class ReminderLogRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def exists(
-        self, subscription_id: int, reminder_date: date, days_before: int
-    ) -> bool:
+    def exists(self, subscription_id: int, reminder_date: date, days_before: int) -> bool:
         stmt = select(ReminderLog.id).where(
             ReminderLog.subscription_id == subscription_id,
             ReminderLog.reminder_date == reminder_date,
