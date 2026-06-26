@@ -1,6 +1,7 @@
 """Application entry point.
 
-Wires the aiogram dispatcher, starts long polling and shuts down gracefully.
+Wires the aiogram dispatcher, creates database tables, starts long polling
+and the reminder scheduler, and shuts down gracefully.
 """
 
 from __future__ import annotations
@@ -13,9 +14,11 @@ from contextlib import suppress
 
 from aiogram import Bot, Dispatcher
 
+# Ensure ORM models are imported so Base.metadata is fully populated.
+import app.database.models  # noqa: F401
 from app.bot.handlers import start as start_handler
 from app.config.settings import settings
-from app.database.engine import engine  # noqa: F401  (import to ensure init)
+from app.database.engine import Base, engine
 from app.logging.setup import setup_logging
 from app.scheduler.jobs import build_scheduler
 
@@ -26,6 +29,10 @@ async def main() -> None:
     """Configure services and start polling."""
     setup_logging()
     logger.info("Bot starting up")
+
+    # Create database tables if they don't exist yet (idempotent).
+    Base.metadata.create_all(engine)
+    logger.info("Database tables verified")
 
     bot = Bot(token=settings.bot_token)
     dp = Dispatcher()
