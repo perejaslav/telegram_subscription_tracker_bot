@@ -12,6 +12,10 @@ venv/
 .venv/
 env/
 
+# uv
+.python-version
+uv.lock
+
 # IDE
 .vscode/
 .idea/
@@ -22,6 +26,17 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Project runtime artefacts
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+logs/*.log
+backups/*.db
+exports/*.csv
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 
 # Logs
 *.log
