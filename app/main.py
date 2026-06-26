@@ -17,6 +17,7 @@ from app.bot.handlers import start as start_handler
 from app.config.settings import settings
 from app.logging.setup import setup_logging
 from app.database.engine import engine  # noqa: F401  (import to ensure init)
+from app.scheduler.jobs import build_scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +44,15 @@ async def main() -> None:
             loop.add_signal_handler(sig, _request_stop)
 
     polling_task = asyncio.create_task(dp.start_polling(bot))
+
+    scheduler = build_scheduler(bot)
+    scheduler.start()
+    logger.info("Scheduler started: daily reminder check at 09:00")
+
     await stop_event.wait()
 
-    logger.info("Stopping polling…")
+    logger.info("Stopping polling and scheduler…")
+    scheduler.shutdown(wait=False)
     await dp.stop_polling()
     polling_task.cancel()
     with suppress(asyncio.CancelledError):

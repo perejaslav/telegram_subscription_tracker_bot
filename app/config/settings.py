@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Project root (this file is app/config/settings.py → parents[2] == root).
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -24,7 +25,7 @@ class Settings(BaseSettings):
     bot_token: str = Field(..., min_length=10, description="Telegram Bot API token")
     admin_telegram_id: int = Field(..., gt=0, description="Allowed Telegram user ID")
     timezone: str = Field(default="UTC", description="IANA timezone name")
-    reminder_days: list[int] = Field(
+    reminder_days: Annotated[list[int], NoDecode] = Field(
         default_factory=lambda: [1, 3, 7],
         description="Days before billing to send a reminder",
     )

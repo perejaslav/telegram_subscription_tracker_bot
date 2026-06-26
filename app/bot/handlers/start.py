@@ -17,6 +17,9 @@ from app.bot.handlers.subscriptions import (
 from app.bot.handlers.payments import (
     register_handlers as register_payment_handlers,
 )
+from app.bot.handlers.settings import (
+    register_handlers as register_settings_handlers,
+)
 
 router = Router(name="start")
 logger = logging.getLogger(__name__)
@@ -57,3 +60,4 @@ def register_handlers(dp: Dispatcher) -> None:
     dp.include_router(router)
     register_subscription_handlers(dp)
     register_payment_handlers(dp)
+    register_settings_handlers(dp)
