@@ -20,6 +20,12 @@ from app.bot.handlers.payments import (
 from app.bot.handlers.settings import (
     register_handlers as register_settings_handlers,
 )
+from app.bot.handlers.reports import (
+    register_handlers as register_reports_handlers,
+)
+from app.bot.handlers.export import (
+    register_handlers as register_export_handlers,
+)
 
 router = Router(name="start")
 logger = logging.getLogger(__name__)
@@ -61,3 +67,5 @@ def register_handlers(dp: Dispatcher) -> None:
     register_subscription_handlers(dp)
     register_payment_handlers(dp)
     register_settings_handlers(dp)
+    register_reports_handlers(dp)
+    register_export_handlers(dp)
