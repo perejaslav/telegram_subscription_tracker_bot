@@ -13,6 +13,7 @@ import sys
 from contextlib import suppress
 
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 # Ensure ORM models are imported so Base.metadata is fully populated.
@@ -35,7 +36,7 @@ async def main() -> None:
     Base.metadata.create_all(engine)
     logger.info("Database tables verified")
 
-    bot = Bot(token=settings.bot_token, parse_mode=ParseMode.HTML)
+    bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
     start_handler.register_handlers(dp)
 
