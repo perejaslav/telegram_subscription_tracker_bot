@@ -43,9 +43,19 @@ def format_subscription_card(subscription: Subscription) -> str:
 
 
 def format_subscription_row(subscription: Subscription) -> str:
-    """Compact one-line summary used in lists."""
+    """Compact one-line summary used in lists (HTML tags allowed)."""
     return (
         f"• <b>{subscription.name}</b> — "
+        f"{format_money(subscription.price, subscription.currency)} · "
+        f"{format_date(subscription.next_billing_date)} · "
+        f"{STATUS_LABELS.get(subscription.status, subscription.status)}"
+    )
+
+
+def format_subscription_row_plain(subscription: Subscription) -> str:
+    """Compact one-line summary without HTML — for inline button labels."""
+    return (
+        f"• {subscription.name} — "
         f"{format_money(subscription.price, subscription.currency)} · "
         f"{format_date(subscription.next_billing_date)} · "
         f"{STATUS_LABELS.get(subscription.status, subscription.status)}"
@@ -93,5 +103,6 @@ __all__ = [
     "format_money",
     "format_subscription_card",
     "format_subscription_row",
+    "format_subscription_row_plain",
     "is_overdue",
 ]

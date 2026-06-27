@@ -41,7 +41,7 @@ from app.utils.formatters import (
     STATUS_LABELS,
     billing_period_label,
     format_subscription_card,
-    format_subscription_row,
+    format_subscription_row_plain,
 )
 from app.utils.validators import ValidationError
 
@@ -317,7 +317,7 @@ async def _render_list(
     total_pages = max(1, (len(items) + PAGE_SIZE - 1) // PAGE_SIZE)
     page = max(0, min(page, total_pages - 1))
     chunk = items[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
-    buttons = [(sub.id, format_subscription_row(sub).replace("• ", "")) for sub in chunk]
+    buttons = [(sub.id, format_subscription_row_plain(sub)) for sub in chunk]
     await message.answer(
         f"<b>{title}</b> (стр. {page + 1}/{total_pages}):",
         reply_markup=subscriptions_list_keyboard(

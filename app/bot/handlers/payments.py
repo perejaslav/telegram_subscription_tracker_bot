@@ -14,9 +14,6 @@ from aiogram.types import (
     Message,
 )
 
-from app.bot.handlers.subscriptions import (
-    format_subscription_row,
-)
 from app.bot.keyboards.main_menu import build_main_menu
 from app.bot.keyboards.payments import (
     pay_actions_keyboard,
@@ -34,7 +31,11 @@ from app.services.subscription_service import (
     SubscriptionNotFoundError,
 )
 from app.utils.dates import format_date, parse_user_date
-from app.utils.formatters import format_money, format_subscription_card
+from app.utils.formatters import (
+    format_money,
+    format_subscription_card,
+    format_subscription_row_plain,
+)
 
 logger = logging.getLogger(__name__)
 router = Router(name="payments")
@@ -75,7 +76,7 @@ async def choose_subscription_to_pay(message: Message, state: FSMContext) -> Non
     rows = [
         [
             InlineKeyboardButton(
-                text=format_subscription_row(s).replace("• ", "")[:60],
+                text=format_subscription_row_plain(s)[:60],
                 callback_data=f"pay:{s.id}:start",
             )
         ]

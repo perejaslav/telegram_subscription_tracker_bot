@@ -14,7 +14,7 @@ from app.bot.keyboards.main_menu import build_main_menu
 from app.database.engine import SessionLocal
 from app.database.models import Subscription
 from app.services.report_service import ReportService
-from app.utils.formatters import category_options, format_subscription_row
+from app.utils.formatters import category_options, format_subscription_row_plain
 
 router = Router(name="reports")
 
@@ -39,7 +39,7 @@ async def show_upcoming(message: Message) -> None:
     rows = [
         [
             InlineKeyboardButton(
-                text=format_subscription_row(s).replace("• ", "")[:60],
+                text=format_subscription_row_plain(s)[:60],
                 callback_data=f"sub:{s.id}:open",
             )
         ]
@@ -89,7 +89,7 @@ async def category_filter(callback: CallbackQuery) -> None:
     rows = [
         [
             InlineKeyboardButton(
-                text=format_subscription_row(s).replace("• ", "")[:60],
+                text=format_subscription_row_plain(s)[:60],
                 callback_data=f"sub:{s.id}:open",
             )
         ]
