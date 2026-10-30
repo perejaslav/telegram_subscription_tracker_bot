@@ -164,3 +164,17 @@ async def test_clean_stop_does_not_request_restart() -> None:
         polling.cancel()
         health.cancel()
         scheduler_failure.cancel()
+
+
+@pytest.mark.asyncio
+async def test_polling_exits_after_sigterm_without_false_crash() -> None:
+    polling = asyncio.create_task(asyncio.sleep(0))
+    health = asyncio.create_task(asyncio.sleep(100))
+    scheduler_failure = asyncio.create_task(asyncio.sleep(100))
+    stop = asyncio.Event()
+    stop.set()
+    try:
+        await wait_for_stop_or_failure(polling, stop, health, scheduler_failure)
+    finally:
+        health.cancel()
+        scheduler_failure.cancel()

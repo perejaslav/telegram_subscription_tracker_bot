@@ -43,6 +43,10 @@ async def wait_for_stop_or_failure(
             {polling_task, stop_task, health_task, scheduler_failure_task},
             return_when=asyncio.FIRST_COMPLETED,
         )
+        # aiogram handles SIGTERM internally and may finish polling before our
+        # stop task wakes. Treat either completion as a requested shutdown.
+        if stop_event.is_set():
+            return
         if scheduler_failure_task in done:
             raise RuntimeError("Scheduler job failed; restarting bot for recovery")
         if health_task in done:
@@ -86,7 +90,9 @@ async def main() -> None:
         with suppress(NotImplementedError, ValueError):
             loop.add_signal_handler(sig, _request_stop)
 
-    polling_task = asyncio.create_task(dp.start_polling(bot))
+    # Keep signal ownership in this entry point. aiogram's default signal
+    # handlers otherwise replace _request_stop and cause false crash reports.
+    polling_task = asyncio.create_task(dp.start_polling(bot, handle_signals=False))
 
     scheduler = build_scheduler(bot)
     scheduler_failed = asyncio.Event()
