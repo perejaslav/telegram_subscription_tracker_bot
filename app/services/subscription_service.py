@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, date
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -20,7 +21,7 @@ from app.utils.validators import (
     validate_name,
     validate_optional_text,
     validate_optional_url,
-    validate_price,
+    validate_price_decimal,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ class SubscriptionInput:
 
     name: str
     category: str
-    price: float
+    price: float | Decimal
     currency: str
     billing_period: str
     next_billing_date: date
@@ -68,7 +69,7 @@ class SubscriptionService:
             if field == "category":
                 return validate_category(value)
             if field == "price":
-                return validate_price(value)
+                return validate_price_decimal(value)
             if field == "currency":
                 return validate_currency(value)
             if field == "billing_period":
@@ -97,7 +98,8 @@ class SubscriptionService:
             user_id=user_id,
             name=payload.name,
             category=payload.category,
-            price=payload.price,
+            price=float(payload.price),
+            price_minor=int(Decimal(str(payload.price)) * 100),
             currency=payload.currency,
             billing_period=payload.billing_period,
             next_billing_date=payload.next_billing_date,
@@ -121,6 +123,8 @@ class SubscriptionService:
             subscription.next_billing_date = parse_user_date(normalized)
         else:
             setattr(subscription, field, normalized)
+            if field == "price":
+                subscription.price_minor = int(Decimal(str(normalized)) * 100)
         self.session.commit()
         logger.info("Subscription %s: field %s updated", subscription_id, field)
         return subscription

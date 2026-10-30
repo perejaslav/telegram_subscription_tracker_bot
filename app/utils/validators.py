@@ -32,6 +32,10 @@ def validate_category(value: str) -> str:
 
 
 def validate_price(value: str) -> float:
+    return float(validate_price_decimal(value))
+
+
+def validate_price_decimal(value: str) -> Decimal:
     cleaned = value.strip().replace(",", ".")
     if not cleaned:
         raise ValidationError("Введите стоимость числом, например: 9.99")
@@ -39,9 +43,15 @@ def validate_price(value: str) -> float:
         amount = Decimal(cleaned)
     except InvalidOperation as exc:
         raise ValidationError("Введите стоимость числом, например: 9.99") from exc
+    if not amount.is_finite():
+        raise ValidationError("Стоимость должна быть конечным числом.")
     if amount <= 0:
         raise ValidationError("Стоимость должна быть больше нуля.")
-    return float(amount)
+    if amount > Decimal("999999999999.99"):
+        raise ValidationError("Стоимость превышает допустимый предел.")
+    if amount.as_tuple().exponent < -2:
+        raise ValidationError("Допускается не более двух знаков после запятой.")
+    return amount
 
 
 def validate_currency(value: str) -> str:
@@ -118,6 +128,7 @@ __all__ = [
     "validate_category",
     "validate_currency",
     "validate_name",
+    "validate_price_decimal",
     "validate_optional_text",
     "validate_optional_url",
     "validate_price",

@@ -23,6 +23,7 @@ import app.database.models  # noqa: F401
 from app.bot.handlers import start as start_handler
 from app.config.settings import PROJECT_ROOT, settings
 from app.database.engine import Base, engine
+from app.database.payment_migration import upgrade_payment_schema
 from app.logging.setup import setup_logging
 from app.scheduler.jobs import build_scheduler
 from app.services.health_service import monitor_health, probe_health
@@ -71,6 +72,7 @@ async def main() -> None:
     logger.info("Bot starting up")
 
     # Create database tables if they don't exist yet (idempotent).
+    upgrade_payment_schema(engine)
     Base.metadata.create_all(engine)
     logger.info("Database tables verified")
 

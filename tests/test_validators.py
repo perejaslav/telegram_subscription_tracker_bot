@@ -32,6 +32,11 @@ class TestValidateName:
 
 
 class TestValidatePrice:
+    @pytest.mark.parametrize("value", ["NaN", "Infinity", "1.001", "1000000000000"])
+    def test_invalid_money(self, value: str) -> None:
+        with pytest.raises(ValidationError):
+            validate_price(value)
+
     def test_ok_dot(self) -> None:
         assert validate_price("9.99") == 9.99
 

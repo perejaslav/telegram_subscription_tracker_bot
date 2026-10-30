@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -112,7 +113,7 @@ async def add_price(message: Message, state: FSMContext) -> None:
     except ValidationError as exc:
         await message.reply(str(exc))
         return
-    await state.update_data(price=value)
+    await state.update_data(price=str(value))
     await state.set_state(AddSubscriptionStates.currency)
     await message.answer(
         "Введите <b>код валюты</b> (например, RUB, USD, EUR, TRY):",
@@ -210,7 +211,7 @@ async def add_save(callback: CallbackQuery, state: FSMContext) -> None:
             payload = SubscriptionInput(
                 name=data["name"],
                 category=data["category"],
-                price=float(data["price"]),
+                price=Decimal(str(data["price"])),
                 currency=data["currency"],
                 billing_period=data["billing_period"],
                 next_billing_date=parse_user_date(data["next_billing_date"]),

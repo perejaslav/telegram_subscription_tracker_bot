@@ -3,22 +3,36 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
+from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.database.models import BillingPeriod, Payment, Subscription, SubscriptionStatus
+from app.config.settings import settings
+from app.database.models import (
+    BillingPeriod,
+    Payment,
+    PaymentCorrection,
+    Subscription,
+    SubscriptionStatus,
+)
 from app.database.repositories.payment_repository import PaymentRepository
 from app.database.repositories.subscription_repository import SubscriptionRepository
 from app.utils.dates import shift_date
-from app.utils.validators import validate_optional_text
+from app.utils.validators import validate_currency, validate_optional_text
 
 logger = logging.getLogger(__name__)
 
 
 class PaymentAmountError(ValueError):
     """Raised when the user-supplied amount cannot be parsed."""
+
+
+class DuplicatePaymentError(ValueError):
+    """The selected billing cycle has already been recorded."""
 
 
 class PaymentService:
@@ -41,6 +55,7 @@ class PaymentService:
         currency: str | None = None,
         note: str | None = None,
         paid_at: date | None = None,
+        billing_due_date: date | None = None,
     ) -> tuple[Subscription, Payment]:
         """Record a payment and advance the subscription's ``next_billing_date``.
 
@@ -56,17 +71,37 @@ class PaymentService:
             raise ArchivedSubscriptionError("Нельзя отметить архивную подписку как оплаченную.")
 
         if amount is None or amount == "":
-            effective_amount = _parse_amount(str(subscription.price))
+            exact_amount = _parse_decimal_amount(
+                str(Decimal(subscription.price_minor) / 100)
+                if subscription.price_minor is not None
+                else str(subscription.price)
+            )
         else:
-            effective_amount = _parse_amount(str(amount))
-        effective_currency = (currency or subscription.currency).strip().upper()
+            exact_amount = _parse_decimal_amount(str(amount))
+        effective_amount = float(exact_amount)
+        effective_currency = validate_currency(currency or subscription.currency)
         effective_note = validate_optional_text(note or "", max_length=500, field="Комментарий")
-        effective_date = paid_at or date.today()
+        effective_date = paid_at or datetime.now(ZoneInfo(settings.timezone)).date()
+        due_date = billing_due_date or subscription.next_billing_date
+        if due_date != subscription.next_billing_date:
+            raise DuplicatePaymentError("Дата оплачиваемого периода уже изменилась.")
+        if (
+            self.session.scalar(
+                select(Payment.id).where(
+                    Payment.subscription_id == subscription.id,
+                    Payment.billing_due_date == due_date,
+                )
+            )
+            is not None
+        ):
+            raise DuplicatePaymentError("Этот период подписки уже оплачен.")
 
         payment = Payment(
             subscription_id=subscription.id,
             paid_at=effective_date,
             amount=effective_amount,
+            amount_minor=int(exact_amount * 100),
+            billing_due_date=due_date,
             currency=effective_currency,
             note=effective_note,
         )
@@ -89,7 +124,11 @@ class PaymentService:
                 )
 
         # If subscription was paused, leave it paused; otherwise it stays active.
-        self.session.commit()
+        try:
+            self.session.commit()
+        except IntegrityError as exc:
+            self.session.rollback()
+            raise DuplicatePaymentError("Этот период подписки уже оплачен.") from exc
         logger.info(
             "Payment recorded for subscription %s: %s %s",
             subscription.id,
@@ -97,6 +136,55 @@ class PaymentService:
             payment.currency,
         )
         return subscription, payment
+
+    def correct_payment(
+        self, payment_id: int, user_id: int, *, amount: str, note: str | None = None
+    ) -> Payment:
+        """Adjust an existing payment without advancing the billing date again."""
+        payment = self.session.get(Payment, payment_id)
+        if payment is None:
+            raise SubscriptionNotFoundError("Платёж не найден.")
+        subscription = self.sub_repo.get(payment.subscription_id)
+        if subscription is None or subscription.user_id != user_id:
+            raise SubscriptionNotFoundError("Платёж не найден.")
+        exact_amount = _parse_decimal_amount(amount)
+        value = float(exact_amount)
+        new_note = (
+            payment.note
+            if note is None
+            else validate_optional_text(note, max_length=500, field="Комментарий")
+        )
+        old_minor = payment.amount_minor
+        if old_minor is None:
+            old_minor = int(Decimal(str(payment.amount)) * 100)
+        self.session.add(
+            PaymentCorrection(
+                payment_id=payment.id,
+                previous_amount_minor=old_minor,
+                new_amount_minor=int(exact_amount * 100),
+                previous_note=payment.note,
+                new_note=new_note,
+            )
+        )
+        payment.amount = value
+        payment.amount_minor = int(exact_amount * 100)
+        payment.note = new_note
+        payment.corrected_at = datetime.now(UTC).replace(tzinfo=None)
+        self.session.commit()
+        return payment
+
+    def correction_history(self, payment_id: int, user_id: int) -> list[PaymentCorrection]:
+        payment = self.session.get(Payment, payment_id)
+        subscription = self.sub_repo.get(payment.subscription_id) if payment else None
+        if subscription is None or subscription.user_id != user_id:
+            raise SubscriptionNotFoundError("Платёж не найден.")
+        return list(
+            self.session.scalars(
+                select(PaymentCorrection)
+                .where(PaymentCorrection.payment_id == payment_id)
+                .order_by(PaymentCorrection.id)
+            )
+        )
 
     def set_next_billing_date(
         self, subscription_id: int, user_id: int, new_date: date
@@ -126,8 +214,12 @@ class PaymentService:
 
 
 def _parse_amount(value: str | None) -> float:
+    return float(_parse_decimal_amount(value))
+
+
+def _parse_decimal_amount(value: str | None) -> Decimal:
     if value is None or not str(value).strip():
-        return 0.0
+        return Decimal("0")
     cleaned = str(value).strip().replace(",", ".")
     try:
         amount = Decimal(cleaned)
@@ -141,12 +233,13 @@ def _parse_amount(value: str | None) -> float:
         raise PaymentAmountError("Сумма превышает допустимый предел.")
     if amount.as_tuple().exponent < -2:
         raise PaymentAmountError("Допускается не более двух знаков после запятой.")
-    return float(amount)
+    return amount
 
 
 __all__ = [
     "ArchivedSubscriptionError",
     "PaymentAmountError",
+    "DuplicatePaymentError",
     "PaymentService",
     "SubscriptionNotFoundError",
 ]

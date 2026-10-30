@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
+from html import escape
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -23,6 +25,7 @@ from app.bot.keyboards.payments import (
 from app.database.engine import SessionLocal
 from app.database.models import BillingPeriod, Subscription, SubscriptionStatus
 from app.services.payment_service import (
+    DuplicatePaymentError,
     PaymentAmountError,
     PaymentService,
 )
@@ -47,6 +50,7 @@ class PayFlow(StatesGroup):
     custom_amount = State()
     note = State()
     manual_date = State()
+    correct_amount = State()
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +136,7 @@ async def pay_start(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
     await state.clear()
-    await state.update_data(pay_sub_id=sub_id)
+    await state.update_data(pay_sub_id=sub_id, pay_due_date=sub.next_billing_date.isoformat())
     await callback.message.edit_text(
         f"Списание {format_money(sub.price, sub.currency)} "
         f"для <b>{sub.name}</b>.\n\n"
@@ -146,10 +150,16 @@ async def pay_start(callback: CallbackQuery, state: FSMContext) -> None:
 async def pay_confirm(callback: CallbackQuery, state: FSMContext) -> None:
     sub_id = int((callback.data or "").split(":")[1])
     user_id = callback.from_user.id
+    data = await state.get_data()
+    if data.get("pay_sub_id") != sub_id or not data.get("pay_due_date"):
+        await callback.answer("Подтверждение устарело. Откройте оплату заново.", show_alert=True)
+        return
     try:
         with SessionLocal() as session:
-            sub, _payment = PaymentService(session).mark_paid(sub_id, user_id)
-    except (SubscriptionNotFoundError, ArchivedSubscriptionError) as exc:
+            sub, _payment = PaymentService(session).mark_paid(
+                sub_id, user_id, billing_due_date=date.fromisoformat(data["pay_due_date"])
+            )
+    except (SubscriptionNotFoundError, ArchivedSubscriptionError, DuplicatePaymentError) as exc:
         await callback.message.answer(str(exc))
         await state.clear()
         await callback.answer()
@@ -193,14 +203,14 @@ async def pay_custom_amount(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(PayFlow.custom_amount)
 async def pay_amount_input(message: Message, state: FSMContext) -> None:
-    from app.services.payment_service import _parse_amount
+    from app.services.payment_service import _parse_decimal_amount
 
     try:
-        amount = _parse_amount(message.text or "")
+        amount = _parse_decimal_amount(message.text or "")
     except PaymentAmountError as exc:
         await message.reply(str(exc))
         return
-    await state.update_data(pay_amount=amount)
+    await state.update_data(pay_amount=str(amount))
     await state.set_state(PayFlow.note)
     await message.answer(
         "Введите <b>комментарий</b> к платежу или нажмите «Без комментария»:",
@@ -238,6 +248,10 @@ async def pay_note_skip(callback: CallbackQuery, state: FSMContext) -> None:
         return
     await state.set_state(None)
     user_id = callback.from_user.id
+    data = await state.get_data()
+    if data.get("pay_sub_id") != sub_id or not data.get("pay_due_date"):
+        await callback.answer("Подтверждение устарело.", show_alert=True)
+        return
     try:
         with SessionLocal() as session:
             sub, _payment = PaymentService(session).mark_paid(
@@ -245,8 +259,9 @@ async def pay_note_skip(callback: CallbackQuery, state: FSMContext) -> None:
                 user_id,
                 amount=(await state.get_data()).get("pay_amount"),
                 note=None,
+                billing_due_date=date.fromisoformat(data["pay_due_date"]),
             )
-    except (SubscriptionNotFoundError, ArchivedSubscriptionError) as exc:
+    except (SubscriptionNotFoundError, ArchivedSubscriptionError, DuplicatePaymentError) as exc:
         await callback.message.answer(str(exc))
         await state.clear()
         await callback.answer()
@@ -275,7 +290,7 @@ async def pay_save(callback: CallbackQuery, state: FSMContext) -> None:
     """Final confirmation for the custom-amount flow."""
     data = await state.get_data()
     sub_id = data.get("pay_sub_id")
-    if not sub_id:
+    if not sub_id or not data.get("pay_due_date"):
         await state.clear()
         await callback.answer("Ошибка состояния.", show_alert=True)
         return
@@ -287,8 +302,9 @@ async def pay_save(callback: CallbackQuery, state: FSMContext) -> None:
                 user_id,
                 amount=data.get("pay_amount"),
                 note=data.get("pay_note"),
+                billing_due_date=date.fromisoformat(data["pay_due_date"]),
             )
-    except (SubscriptionNotFoundError, ArchivedSubscriptionError) as exc:
+    except (SubscriptionNotFoundError, ArchivedSubscriptionError, DuplicatePaymentError) as exc:
         await callback.message.answer(str(exc))
         await state.clear()
         await callback.answer()
@@ -393,13 +409,22 @@ async def history_open(callback: CallbackQuery) -> None:
         return
     lines = [
         f"• {format_date(p.paid_at)} — {format_money(p.amount, p.currency)}"
-        + (f" — {p.note}" if p.note else "")
+        + (f" — {escape(p.note)}" if p.note else "")
+        + (" (исправлен)" if p.corrected_at else "")
         for p in payments
     ]
+    correction_buttons = [
+        [
+            InlineKeyboardButton(text=f"✏ Исправить #{p.id}", callback_data=f"pedit:{p.id}"),
+            InlineKeyboardButton(text="История правок", callback_data=f"peditlog:{p.id}"),
+        ]
+        for p in payments[:10]
+    ]
     await callback.message.edit_text(
-        f"<b>{sub.name if sub else ''}</b> — последние оплаты:\n\n" + "\n".join(lines),
+        f"<b>{escape(sub.name) if sub else ''}</b> — последние оплаты:\n\n" + "\n".join(lines),
         reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
+            inline_keyboard=correction_buttons
+            + [
                 [
                     InlineKeyboardButton(
                         text="🔙 К карточке",
@@ -410,6 +435,64 @@ async def history_open(callback: CallbackQuery) -> None:
         ),
     )
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("pedit:"))
+async def payment_edit_start(callback: CallbackQuery, state: FSMContext) -> None:
+    payment_id = int((callback.data or "").split(":")[1])
+    with SessionLocal() as session:
+        try:
+            PaymentService(session).correction_history(payment_id, callback.from_user.id)
+        except SubscriptionNotFoundError:
+            await callback.answer("Платёж не найден.", show_alert=True)
+            return
+    await state.clear()
+    await state.update_data(correction_payment_id=payment_id)
+    await state.set_state(PayFlow.correct_amount)
+    await callback.message.answer("Введите правильную сумму платежа (например, 19.99):")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("peditlog:"))
+async def payment_corrections_open(callback: CallbackQuery) -> None:
+    payment_id = int((callback.data or "").split(":")[1])
+    try:
+        with SessionLocal() as session:
+            corrections = PaymentService(session).correction_history(
+                payment_id, callback.from_user.id
+            )
+    except SubscriptionNotFoundError:
+        await callback.answer("Платёж не найден.", show_alert=True)
+        return
+    if not corrections:
+        await callback.message.answer("У этого платежа пока нет исправлений.")
+    else:
+        details = [
+            f"• {item.previous_amount_minor / 100:.2f} → {item.new_amount_minor / 100:.2f}"
+            for item in corrections[-15:]
+        ]
+        await callback.message.answer(
+            f"История исправлений платежа #{payment_id}:\n" + "\n".join(details)
+        )
+    await callback.answer()
+
+
+@router.message(PayFlow.correct_amount)
+async def payment_edit_amount(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    try:
+        with SessionLocal() as session:
+            payment = PaymentService(session).correct_payment(
+                int(data["correction_payment_id"]),
+                message.from_user.id if message.from_user else 0,
+                amount=message.text or "",
+            )
+            displayed = format_money(payment.amount, payment.currency)
+    except (PaymentAmountError, SubscriptionNotFoundError) as exc:
+        await message.answer(str(exc))
+        return
+    await state.clear()
+    await message.answer(f"✅ Сумма исправлена: {displayed}. Изменение сохранено в истории.")
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +515,10 @@ async def _save_custom_payment(
     sub: Subscription,
 ) -> None:
     data = await state.get_data()
+    if data.get("pay_sub_id") != sub_id or not data.get("pay_due_date"):
+        await message.answer("Подтверждение устарело. Откройте оплату заново.")
+        await state.clear()
+        return
     user_id = message.from_user.id if message.from_user else 0
     try:
         with SessionLocal() as session:
@@ -440,8 +527,9 @@ async def _save_custom_payment(
                 user_id,
                 amount=data.get("pay_amount"),
                 note=data.get("pay_note"),
+                billing_due_date=date.fromisoformat(data["pay_due_date"]),
             )
-    except (SubscriptionNotFoundError, ArchivedSubscriptionError) as exc:
+    except (SubscriptionNotFoundError, ArchivedSubscriptionError, DuplicatePaymentError) as exc:
         await message.answer(str(exc))
         await state.clear()
         return

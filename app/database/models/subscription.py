@@ -13,6 +13,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -54,6 +55,7 @@ class Subscription(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False)
     price: Mapped[float] = mapped_column(Float, nullable=False)
+    price_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
     billing_period: Mapped[str] = mapped_column(String(20), nullable=False)
     next_billing_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -89,7 +91,10 @@ class Payment(Base):
     """A recorded payment against a subscription (spec §13)."""
 
     __tablename__ = "payments"
-    __table_args__ = (Index("ix_payments_subscription", "subscription_id"),)
+    __table_args__ = (
+        Index("ix_payments_subscription", "subscription_id"),
+        UniqueConstraint("subscription_id", "billing_due_date", name="uq_payment_billing_cycle"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     subscription_id: Mapped[int] = mapped_column(
@@ -97,6 +102,10 @@ class Payment(Base):
     )
     paid_at: Mapped[date] = mapped_column(Date, nullable=False)
     amount: Mapped[float] = mapped_column(Float, nullable=False)
+    # Integer minor units are authoritative; amount remains for older consumers.
+    amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    billing_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    corrected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -104,6 +113,24 @@ class Payment(Base):
     )
 
     subscription: Mapped[Subscription] = relationship(back_populates="payments")
+
+
+class PaymentCorrection(Base):
+    """Append-only journal of payment edits for auditability."""
+
+    __tablename__ = "payment_corrections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    payment_id: Mapped[int] = mapped_column(
+        ForeignKey("payments.id", ondelete="CASCADE"), nullable=False
+    )
+    previous_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    new_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    previous_note: Mapped[str | None] = mapped_column(String(500))
+    new_note: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), nullable=False
+    )
 
 
 class ReminderLog(Base):
@@ -161,6 +188,7 @@ class UserSettings(Base):
 __all__ = [
     "BillingPeriod",
     "Payment",
+    "PaymentCorrection",
     "ReminderLog",
     "Subscription",
     "SubscriptionStatus",

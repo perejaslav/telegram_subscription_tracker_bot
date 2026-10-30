@@ -3,6 +3,7 @@
 from app.database.models.subscription import (
     BillingPeriod,
     Payment,
+    PaymentCorrection,
     ReminderLog,
     Subscription,
     SubscriptionStatus,
@@ -12,6 +13,7 @@ from app.database.models.subscription import (
 __all__ = [
     "BillingPeriod",
     "Payment",
+    "PaymentCorrection",
     "ReminderLog",
     "Subscription",
     "SubscriptionStatus",
