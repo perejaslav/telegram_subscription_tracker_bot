@@ -56,11 +56,9 @@ class PaymentService:
             raise ArchivedSubscriptionError("Нельзя отметить архивную подписку как оплаченную.")
 
         if amount is None or amount == "":
-            effective_amount = float(subscription.price)
-        elif isinstance(amount, (int, float)):
-            effective_amount = float(amount)
+            effective_amount = _parse_amount(str(subscription.price))
         else:
-            effective_amount = _parse_amount(amount)
+            effective_amount = _parse_amount(str(amount))
         effective_currency = (currency or subscription.currency).strip().upper()
         effective_note = validate_optional_text(note or "", max_length=500, field="Комментарий")
         effective_date = paid_at or date.today()
@@ -135,8 +133,14 @@ def _parse_amount(value: str | None) -> float:
         amount = Decimal(cleaned)
     except InvalidOperation as exc:
         raise PaymentAmountError("Введите сумму числом, например: 19.99") from exc
+    if not amount.is_finite():
+        raise PaymentAmountError("Сумма должна быть конечным числом.")
     if amount < 0:
         raise PaymentAmountError("Сумма не может быть отрицательной.")
+    if amount > Decimal("999999999999.99"):
+        raise PaymentAmountError("Сумма превышает допустимый предел.")
+    if amount.as_tuple().exponent < -2:
+        raise PaymentAmountError("Допускается не более двух знаков после запятой.")
     return float(amount)
 
 

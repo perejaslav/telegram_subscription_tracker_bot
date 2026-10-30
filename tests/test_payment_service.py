@@ -68,6 +68,17 @@ class TestMarkPaid:
         with pytest.raises(PaymentAmountError):
             PaymentService(session).mark_paid(sub_id, admin_id, amount="-5")
 
+    @pytest.mark.parametrize("amount", ["NaN", "Infinity", "-Infinity", "1e9999", "1.001"])
+    def test_invalid_money_is_rejected_without_payment_or_date_shift(
+        self, session: Session, admin_id: int, amount: str
+    ) -> None:
+        sub_id = _make_sub(session, admin_id)
+        service = PaymentService(session)
+        with pytest.raises(PaymentAmountError):
+            service.mark_paid(sub_id, admin_id, amount=amount)
+        assert service.history(sub_id, admin_id) == []
+        assert service.sub_repo.get(sub_id).next_billing_date == date(2026, 7, 1)
+
     def test_history(self, session: Session, admin_id: int) -> None:
         sub_id = _make_sub(session, admin_id)
         for _ in range(3):
