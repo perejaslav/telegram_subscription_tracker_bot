@@ -11,20 +11,54 @@ import logging
 import signal
 import sys
 from contextlib import suppress
+from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from apscheduler.events import EVENT_JOB_ERROR
 
 # Ensure ORM models are imported so Base.metadata is fully populated.
 import app.database.models  # noqa: F401
 from app.bot.handlers import start as start_handler
-from app.config.settings import settings
+from app.config.settings import PROJECT_ROOT, settings
 from app.database.engine import Base, engine
 from app.logging.setup import setup_logging
 from app.scheduler.jobs import build_scheduler
+from app.services.health_service import monitor_health, probe_health
 
 logger = logging.getLogger(__name__)
+
+
+async def wait_for_stop_or_failure(
+    polling_task: asyncio.Task,
+    stop_event: asyncio.Event,
+    health_task: asyncio.Task,
+    scheduler_failure_task: asyncio.Task,
+) -> None:
+    """Return for requested shutdown; raise if polling or health stops unexpectedly."""
+    stop_task = asyncio.create_task(stop_event.wait())
+    try:
+        done, _ = await asyncio.wait(
+            {polling_task, stop_task, health_task, scheduler_failure_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if scheduler_failure_task in done:
+            raise RuntimeError("Scheduler job failed; restarting bot for recovery")
+        if health_task in done:
+            await health_task
+            raise RuntimeError("Health monitor stopped unexpectedly")
+        if polling_task in done:
+            try:
+                await polling_task
+            except Exception:
+                logger.exception("Telegram polling crashed; systemd will restart the service")
+                raise
+            raise RuntimeError("Telegram polling stopped unexpectedly")
+    finally:
+        stop_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await stop_task
 
 
 async def main() -> None:
@@ -55,27 +89,45 @@ async def main() -> None:
     polling_task = asyncio.create_task(dp.start_polling(bot))
 
     scheduler = build_scheduler(bot)
+    scheduler_failed = asyncio.Event()
+
+    def _on_scheduler_error(event: object) -> None:
+        logger.error("Scheduled job failed: %s", getattr(event, "job_id", "unknown"))
+        scheduler_failed.set()
+
+    scheduler.add_listener(_on_scheduler_error, EVENT_JOB_ERROR)
     scheduler.start()
+    probe_health(scheduler, engine)
     logger.info("Scheduler started: daily reminder check at 09:00")
 
+    marker = Path(PROJECT_ROOT) / "data" / ".bot-active"
+    recovered = marker.exists()
+    marker.touch()
+    health_task = asyncio.create_task(monitor_health(scheduler, engine))
+    scheduler_failure_task = asyncio.create_task(scheduler_failed.wait())
+
     try:
-        stop_task = asyncio.create_task(stop_event.wait())
-        done, _ = await asyncio.wait({polling_task, stop_task}, return_when=asyncio.FIRST_COMPLETED)
-        if polling_task in done:
-            stop_task.cancel()
+        if recovered:
             try:
-                await polling_task
-            except asyncio.CancelledError:
-                raise
+                await bot.send_message(
+                    settings.admin_telegram_id,
+                    "Бот восстановил работу после неожиданного завершения.",
+                )
             except Exception:
-                logger.exception("Telegram polling crashed; systemd will restart the service")
-                raise
-            else:
-                raise RuntimeError("Telegram polling stopped unexpectedly")
-        stop_task.cancel()
+                logger.exception("Could not deliver recovery notice")
+        await wait_for_stop_or_failure(
+            polling_task, stop_event, health_task, scheduler_failure_task
+        )
+        marker.unlink(missing_ok=True)
 
     finally:
         logger.info("Stopping polling and scheduler…")
+        health_task.cancel()
+        scheduler_failure_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await health_task
+        with suppress(asyncio.CancelledError):
+            await scheduler_failure_task
         with suppress(Exception):
             scheduler.shutdown(wait=False)
         if not polling_task.done():
@@ -83,7 +135,7 @@ async def main() -> None:
                 await dp.stop_polling()
         if not polling_task.done():
             polling_task.cancel()
-        with suppress(asyncio.CancelledError):
+        with suppress(asyncio.CancelledError, Exception):
             await polling_task
         await bot.session.close()
         logger.info("Bot stopped cleanly")

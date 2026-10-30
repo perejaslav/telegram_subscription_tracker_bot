@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from app.config.settings import settings
 from app.services.backup_service import BackupService
@@ -36,6 +37,18 @@ def build_scheduler(bot: Bot) -> AsyncIOScheduler:
         replace_existing=True,
         coalesce=True,
         max_instances=1,
+    )
+    # Catch up after missed daily runs and retry transient delivery failures.
+    # Sent-only idempotency in ReminderLogRepository prevents same-day duplicates.
+    scheduler.add_job(
+        run_reminder_check,
+        trigger=IntervalTrigger(hours=1, timezone=_resolve_timezone()),
+        kwargs={"bot": bot},
+        id="hourly_reminder_recovery",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=3600,
     )
     scheduler.add_job(
         BackupService().create_backup,
