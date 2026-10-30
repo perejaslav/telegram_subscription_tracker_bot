@@ -140,7 +140,10 @@ async def main() -> None:
             with suppress(Exception):
                 await dp.stop_polling()
         if not polling_task.done():
-            polling_task.cancel()
+            try:
+                await asyncio.wait_for(asyncio.shield(polling_task), timeout=5)
+            except Exception:
+                polling_task.cancel()
         with suppress(asyncio.CancelledError, Exception):
             await polling_task
         await bot.session.close()
