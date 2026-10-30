@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import calendar
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -44,6 +44,7 @@ class SummaryReport:
     totals_by_currency: list[CurrencyTotal]
     by_category: dict[str, list[CurrencyTotal]]
     upcoming: list[Subscription]
+    excluded_periods: dict[str, int]
 
 
 class ReportService:
@@ -92,6 +93,15 @@ class ReportService:
             totals_by_currency=totals,
             by_category=by_category,
             upcoming=upcoming,
+            excluded_periods=dict(
+                sorted(
+                    Counter(
+                        sub.billing_period
+                        for sub in active
+                        if sub.billing_period not in _PERIODS_PER_MONTH
+                    ).items()
+                )
+            ),
         )
 
     def upcoming(
@@ -134,6 +144,12 @@ class ReportService:
             for cat, totals in sorted(report.by_category.items()):
                 parts = ", ".join(format_money(t.monthly_equivalent, t.currency) for t in totals)
                 lines.append(f"  • {cat}: {parts}")
+
+        if report.excluded_periods:
+            lines.append("")
+            lines.append("⚠ Не включены в расчёт суммы подписок с периодами:")
+            for period, count in report.excluded_periods.items():
+                lines.append(f"  • {period}: {count}")
 
         if report.upcoming:
             lines.append("")

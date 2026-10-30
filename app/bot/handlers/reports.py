@@ -6,6 +6,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
+from aiogram.filters import Command
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -53,6 +54,7 @@ async def show_expenses(message: Message) -> None:
     )
 
 
+@router.message(Command("summary"))
 @router.message(F.text == "📊 Сводка")
 async def show_summary(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0

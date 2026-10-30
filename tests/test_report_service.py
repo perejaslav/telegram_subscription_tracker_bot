@@ -83,6 +83,17 @@ class TestSummary:
         assert "20.00 USD" in text
         assert "Сводка" in text
 
+    def test_unsupported_period_is_reported_instead_of_silent_empty_totals(
+        self, session: Session, admin_id: int
+    ) -> None:
+        sub_id = _make(session, admin_id)
+        sub = SubscriptionService(session).repo.get(sub_id)
+        sub.billing_period = "unexpected_period"
+        session.commit()
+        summary = ReportService(session).summary(admin_id)
+        assert summary.excluded_periods == {"unexpected_period": 1}
+        assert "unexpected_period: 1" in ReportService.render_summary(summary)
+
 
 class TestExportService:
     def test_csv_subscriptions(self, session: Session, admin_id: int, exports_dir: Path) -> None:
