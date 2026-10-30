@@ -92,9 +92,10 @@ async def main() -> None:
 
     # Keep signal ownership in this entry point. aiogram's default signal
     # handlers otherwise replace _request_stop and cause false crash reports.
-    polling_task = asyncio.create_task(dp.start_polling(bot, handle_signals=False))
-
-    scheduler = build_scheduler(bot)
+    polling_task: asyncio.Task | None = None
+    health_task: asyncio.Task | None = None
+    scheduler_failure_task: asyncio.Task | None = None
+    scheduler = None
     scheduler_failed = asyncio.Event()
 
     def _on_scheduler_event(event: object) -> None:
@@ -107,20 +108,20 @@ async def main() -> None:
         else:
             logger.info("Scheduled job completed: %s", job_id)
 
-    scheduler.add_listener(
-        _on_scheduler_event, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED | EVENT_JOB_MISSED
-    )
-    scheduler.start()
-    probe_health(scheduler, engine)
-    logger.info("Scheduler started: daily reminder check at 09:00")
-
     marker = Path(PROJECT_ROOT) / "data" / ".bot-active"
-    recovered = marker.exists()
-    marker.touch()
-    health_task = asyncio.create_task(monitor_health(scheduler, engine))
-    scheduler_failure_task = asyncio.create_task(scheduler_failed.wait())
-
     try:
+        scheduler = build_scheduler(bot)
+        scheduler.add_listener(
+            _on_scheduler_event, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED | EVENT_JOB_MISSED
+        )
+        scheduler.start()
+        probe_health(scheduler, engine)
+        logger.info("Scheduler started: daily reminder check at 09:00")
+        polling_task = asyncio.create_task(dp.start_polling(bot, handle_signals=False))
+        recovered = marker.exists()
+        marker.touch()
+        health_task = asyncio.create_task(monitor_health(scheduler, engine))
+        scheduler_failure_task = asyncio.create_task(scheduler_failed.wait())
         if recovered:
             try:
                 await bot.send_message(
@@ -136,24 +137,25 @@ async def main() -> None:
 
     finally:
         logger.info("Stopping polling and scheduler…")
-        health_task.cancel()
-        scheduler_failure_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await health_task
-        with suppress(asyncio.CancelledError):
-            await scheduler_failure_task
-        with suppress(Exception):
-            scheduler.shutdown(wait=False)
-        if not polling_task.done():
+        for task in (health_task, scheduler_failure_task):
+            if task is not None:
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
+        if scheduler is not None and scheduler.running:
             with suppress(Exception):
-                await dp.stop_polling()
-        if not polling_task.done():
-            try:
-                await asyncio.wait_for(asyncio.shield(polling_task), timeout=5)
-            except Exception:
-                polling_task.cancel()
-        with suppress(asyncio.CancelledError, Exception):
-            await polling_task
+                scheduler.shutdown(wait=False)
+        if polling_task is not None:
+            if not polling_task.done():
+                with suppress(Exception):
+                    await dp.stop_polling()
+            if not polling_task.done():
+                try:
+                    await asyncio.wait_for(asyncio.shield(polling_task), timeout=5)
+                except Exception:
+                    polling_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await polling_task
         await bot.session.close()
         logger.info("Bot stopped cleanly")
 

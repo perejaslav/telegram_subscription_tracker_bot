@@ -36,13 +36,17 @@ class FakeDispatcher:
 
 
 class FakeScheduler:
+    running = False
+
     def add_listener(self, *args):
         pass
 
     def start(self):
+        self.running = True
         events.append("scheduler_started")
 
     def shutdown(self, wait=False):
+        self.running = False
         events.append("scheduler_stopped")
 
 
@@ -76,5 +80,30 @@ async def run():
     print("SIGTERM_SUCCESS", ",".join(events))
 
 
+async def check_startup_failure():
+    entry.Bot = FakeBot
+    entry.Dispatcher = FakeDispatcher
+    entry.start_handler.register_handlers = lambda dp: None
+    entry.Base.metadata.create_all = lambda engine: None
+    entry.build_scheduler = lambda bot: FakeScheduler()
+
+    def unhealthy(*args):
+        raise RuntimeError("simulated isolated startup failure")
+
+    entry.probe_health = unhealthy
+    try:
+        await entry.main()
+    except RuntimeError as exc:
+        assert "simulated isolated startup failure" in str(exc)
+    else:
+        raise AssertionError("Startup should fail")
+    assert "scheduler_stopped" in events and "session_closed" in events, events
+    assert "polling_started" not in events, events
+    print("STARTUP_FAILURE_CLEANUP_OK", ",".join(events))
+
+
 if __name__ == "__main__":
-    asyncio.run(run())
+    if os.environ.get("ACCEPTANCE_STARTUP_FAILURE") == "1":
+        asyncio.run(check_startup_failure())
+    else:
+        asyncio.run(run())
