@@ -16,7 +16,7 @@ from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from apscheduler.events import EVENT_JOB_ERROR
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, EVENT_JOB_MISSED
 
 # Ensure ORM models are imported so Base.metadata is fully populated.
 import app.database.models  # noqa: F401
@@ -97,11 +97,19 @@ async def main() -> None:
     scheduler = build_scheduler(bot)
     scheduler_failed = asyncio.Event()
 
-    def _on_scheduler_error(event: object) -> None:
-        logger.error("Scheduled job failed: %s", getattr(event, "job_id", "unknown"))
-        scheduler_failed.set()
+    def _on_scheduler_event(event: object) -> None:
+        job_id = getattr(event, "job_id", "unknown")
+        if getattr(event, "exception", None) is not None:
+            logger.error("Scheduled job failed: %s", job_id)
+            scheduler_failed.set()
+        elif getattr(event, "code", None) == EVENT_JOB_MISSED:
+            logger.warning("Scheduled job missed: %s", job_id)
+        else:
+            logger.info("Scheduled job completed: %s", job_id)
 
-    scheduler.add_listener(_on_scheduler_error, EVENT_JOB_ERROR)
+    scheduler.add_listener(
+        _on_scheduler_event, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED | EVENT_JOB_MISSED
+    )
     scheduler.start()
     probe_health(scheduler, engine)
     logger.info("Scheduler started: daily reminder check at 09:00")
