@@ -48,11 +48,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 
 async def on_unauthorized(message: Message) -> None:
     """Reply to anyone who is not the configured admin."""
-    logger.warning(
-        "Unauthorized access attempt from user_id=%s username=%s",
-        message.from_user.id if message.from_user else None,
-        message.from_user.username if message.from_user else None,
-    )
+    logger.warning("Unauthorized access attempt rejected")
     await message.answer("⛔ Доступ запрещён. Этот бот — личный.")
 
 

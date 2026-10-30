@@ -14,7 +14,7 @@ env/
 
 # uv
 .python-version
-uv.lock
+# Keep uv.lock committed for reproducible installs and CI.
 
 # IDE
 .vscode/

@@ -1,0 +1,32 @@
+name: Quality and security
+on:
+  push:
+    branches: [master, 'feat/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install frozen dependencies
+        run: uv sync --frozen --python 3.12
+      - name: Lint
+        run: uv run --frozen ruff check app tests
+      - name: Format
+        run: uv run --frozen ruff format --check app tests
+      - name: Tests (isolated, fake Telegram)
+        env:
+          BOT_TOKEN: '1234567890:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+          ADMIN_TELEGRAM_ID: '123456789'
+          TIMEZONE: UTC
+          DATABASE_URL: 'sqlite:///:memory:'
+        run: uv run --frozen pytest -q
+      - name: Dependency vulnerability review
+        run: uvx pip-audit --path .venv/lib/python3.12/site-packages
