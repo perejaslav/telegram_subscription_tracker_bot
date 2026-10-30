@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,6 +19,17 @@ class ReminderLogRepository:
             ReminderLog.subscription_id == subscription_id,
             ReminderLog.reminder_date == reminder_date,
             ReminderLog.days_before == days_before,
+            ReminderLog.status == "sent",
+        )
+        return self.session.execute(stmt).first() is not None
+
+    def sent_for_window(self, subscription_id: int, today: date, threshold: int) -> bool:
+        """The threshold was already delivered yesterday or today."""
+        stmt = select(ReminderLog.id).where(
+            ReminderLog.subscription_id == subscription_id,
+            ReminderLog.reminder_date >= today - timedelta(days=1),
+            ReminderLog.reminder_date <= today,
+            ReminderLog.days_before == threshold,
             ReminderLog.status == "sent",
         )
         return self.session.execute(stmt).first() is not None

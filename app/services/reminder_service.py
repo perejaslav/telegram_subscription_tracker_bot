@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import html
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -9,7 +11,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
@@ -43,6 +45,7 @@ class ReminderService:
         self.bot = bot
         self.sub_repo = SubscriptionRepository(session)
         self.log_repo = ReminderLogRepository(session)
+        self._failures = 0
 
     # ------------------------------------------------------------------
     # Public API
@@ -68,10 +71,14 @@ class ReminderService:
             if delta < 0:
                 outcome.overdue += await self._maybe_send_overdue(sub, today)
                 continue
-            if delta in reminder_days_set:
-                outcome.sent += await self._maybe_send(sub, today, days_before=delta)
+            threshold = next((d for d in sorted(reminder_days_set) if delta in (d, d - 1)), None)
+            if threshold is not None and not self.log_repo.sent_for_window(
+                sub.id, today, threshold
+            ):
+                outcome.sent += await self._maybe_send(sub, today, days_before=threshold)
             else:
                 outcome.skipped += 1
+        outcome.failed = self._failures
         self.session.commit()
         logger.info(
             "Daily reminder check: sent=%s skipped=%s overdue=%s failed=%s",
@@ -90,7 +97,7 @@ class ReminderService:
             return 0
         text = (
             f"⏰ Через <b>{_plural_days(days_before)}</b> будет списание:\n\n"
-            f"📦 <b>{sub.name}</b>\n"
+            f"📦 <b>{html.escape(sub.name)}</b>\n"
             f"{format_money(sub.price, sub.currency)}\n"
             f"Дата: {format_date(sub.next_billing_date)}"
         )
@@ -102,7 +109,7 @@ class ReminderService:
         delta = days_until(sub.next_billing_date, today)
         text = (
             f"⚠ <b>Просрочено</b> на {-delta} дн.:\n\n"
-            f"📦 <b>{sub.name}</b>\n"
+            f"📦 <b>{html.escape(sub.name)}</b>\n"
             f"{format_money(sub.price, sub.currency)}\n"
             f"Дата: {format_date(sub.next_billing_date)}"
         )
@@ -115,11 +122,22 @@ class ReminderService:
         days_before: int,
         text: str,
     ) -> bool:
-        try:
-            await self.bot.send_message(settings.admin_telegram_id, text)
-        except TelegramAPIError as exc:
-            logger.warning("Reminder send failed for sub %s: %s", sub.id, exc)
-            return False
+        for attempt in range(3):
+            try:
+                await self.bot.send_message(settings.admin_telegram_id, text)
+                break
+            except TelegramRetryAfter as exc:
+                if attempt == 2:
+                    logger.warning("Rate-limited reminder %s", sub.id)
+                    self._failures += 1
+                    return False
+                await asyncio.sleep(min(max(exc.retry_after, 1), 30))
+            except TelegramAPIError as exc:
+                if attempt == 2:
+                    logger.warning("Reminder delivery failed %s: %s", sub.id, exc)
+                    self._failures += 1
+                    return False
+                await asyncio.sleep(2**attempt)
         self.log_repo.add(sub.id, today, days_before, status="sent")
         logger.info(
             "Reminder sent: sub=%s days_before=%s admin=%s",
