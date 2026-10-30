@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
@@ -46,7 +47,7 @@ class ReminderService:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    def run_daily_check(
+    async def run_daily_check(
         self,
         *,
         today: date | None = None,
@@ -54,7 +55,7 @@ class ReminderService:
     ) -> ReminderOutcome:
         """Scan active subscriptions and dispatch reminders."""
         outcome = ReminderOutcome()
-        today = today or date.today()
+        today = today or datetime.now(ZoneInfo(settings.timezone)).date()
         reminder_days_set = set(
             reminder_days if reminder_days is not None else settings.reminder_days
         )
@@ -65,10 +66,10 @@ class ReminderService:
         for sub in active_subs:
             delta = days_until(sub.next_billing_date, today)
             if delta < 0:
-                outcome.overdue += self._maybe_send_overdue(sub, today)
+                outcome.overdue += await self._maybe_send_overdue(sub, today)
                 continue
             if delta in reminder_days_set:
-                outcome.sent += self._maybe_send(sub, today, days_before=delta)
+                outcome.sent += await self._maybe_send(sub, today, days_before=delta)
             else:
                 outcome.skipped += 1
         self.session.commit()
@@ -84,7 +85,7 @@ class ReminderService:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
-    def _maybe_send(self, sub: Subscription, today: date, *, days_before: int) -> int:
+    async def _maybe_send(self, sub: Subscription, today: date, *, days_before: int) -> int:
         if self.log_repo.exists(sub.id, today, days_before):
             return 0
         text = (
@@ -93,9 +94,9 @@ class ReminderService:
             f"{format_money(sub.price, sub.currency)}\n"
             f"Дата: {format_date(sub.next_billing_date)}"
         )
-        return int(self._dispatch(sub, today, days_before, text))
+        return int(await self._dispatch(sub, today, days_before, text))
 
-    def _maybe_send_overdue(self, sub: Subscription, today: date) -> int:
+    async def _maybe_send_overdue(self, sub: Subscription, today: date) -> int:
         if self.log_repo.exists(sub.id, today, self.OVERDUE_DAYS_BEFORE):
             return 0
         delta = days_until(sub.next_billing_date, today)
@@ -105,9 +106,9 @@ class ReminderService:
             f"{format_money(sub.price, sub.currency)}\n"
             f"Дата: {format_date(sub.next_billing_date)}"
         )
-        return int(self._dispatch(sub, today, self.OVERDUE_DAYS_BEFORE, text))
+        return int(await self._dispatch(sub, today, self.OVERDUE_DAYS_BEFORE, text))
 
-    def _dispatch(
+    async def _dispatch(
         self,
         sub: Subscription,
         today: date,
@@ -115,10 +116,9 @@ class ReminderService:
         text: str,
     ) -> bool:
         try:
-            self.bot.send_message(settings.admin_telegram_id, text)
+            await self.bot.send_message(settings.admin_telegram_id, text)
         except TelegramAPIError as exc:
             logger.warning("Reminder send failed for sub %s: %s", sub.id, exc)
-            self.log_repo.add(sub.id, today, days_before, status="failed")
             return False
         self.log_repo.add(sub.id, today, days_before, status="sent")
         logger.info(
@@ -143,14 +143,14 @@ def _plural_days(n: int) -> str:
     return f"{n} дней"
 
 
-def run_reminder_check(bot: Bot, *, today: date | None = None) -> ReminderOutcome:
+async def run_reminder_check(bot: Bot, *, today: date | None = None) -> ReminderOutcome:
     """Helper for the scheduler job — opens its own DB session."""
     with SessionLocal() as session:
-        return ReminderService(session, bot).run_daily_check(today=today)
+        return await ReminderService(session, bot).run_daily_check(today=today)
 
 
 __all__ = ["ReminderOutcome", "ReminderService", "run_reminder_check"]
 
 
 # Touch imports for typing/linters.
-_ = (ReminderLog, timedelta)
+_ = ReminderLog

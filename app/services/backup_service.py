@@ -1,12 +1,15 @@
-"""Database backup service — copies the SQLite file with a timestamped name."""
+"""Online SQLite backup, integrity validation and retention."""
 
 from __future__ import annotations
 
 import logging
-import shutil
+import os
+import sqlite3
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+from sqlalchemy.engine import make_url
 
 from app.config.settings import PROJECT_ROOT, settings
 
@@ -20,38 +23,52 @@ class BackupResult:
 
 
 class BackupService:
-    """Create timestamped SQLite backups under ``backups/``."""
-
-    def __init__(self) -> None:
-        self.backups_dir: Path = PROJECT_ROOT / "backups"
+    def __init__(self, backups_dir: Path | None = None, database_url: str | None = None):
+        self.backups_dir = backups_dir or PROJECT_ROOT / "backups"
+        self.database_url = database_url or settings.database_url
         self.backups_dir.mkdir(parents=True, exist_ok=True)
 
     def create_backup(self) -> BackupResult:
-        db_path = self._resolve_sqlite_path(settings.database_url)
-        if db_path is None or not db_path.exists():
-            raise FileNotFoundError(f"Database file not found: {db_path}")
-        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        source = self._resolve_sqlite_path(self.database_url)
+        if source is None or not source.is_file():
+            raise FileNotFoundError(f"SQLite database not found: {source}")
+        stamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S_%f")
         target = self.backups_dir / f"subscriptions_{stamp}.db"
-        counter = 1
-        while target.exists():
-            target = self.backups_dir / f"subscriptions_{stamp}_{counter}.db"
-            counter += 1
-        shutil.copy2(db_path, target)
-        size = target.stat().st_size
-        logger.info("Backup created: %s (%s bytes)", target, size)
-        return BackupResult(path=target, size_bytes=size)
+        pending = target.with_suffix(".pending")
+        try:
+            with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as source_conn:
+                with sqlite3.connect(pending) as target_conn:
+                    source_conn.backup(target_conn)
+                    result = target_conn.execute("PRAGMA integrity_check").fetchone()[0]
+                    if result != "ok":
+                        raise RuntimeError(f"SQLite integrity check failed: {result}")
+            with sqlite3.connect(pending) as check_conn:
+                if check_conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                    raise RuntimeError("Backup verification failed")
+            os.replace(pending, target)
+        finally:
+            pending.unlink(missing_ok=True)
+        self.cleanup_old_backups()
+        logger.info("SQLite online backup created: %s", target)
+        return BackupResult(target, target.stat().st_size)
+
+    def cleanup_old_backups(self, days: int = 30) -> None:
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+        for path in self.backups_dir.glob("subscriptions_*.db"):
+            if datetime.fromtimestamp(path.stat().st_mtime, UTC) < cutoff:
+                path.unlink()
 
     @staticmethod
     def _resolve_sqlite_path(url: str) -> Path | None:
-        if not url.startswith("sqlite"):
+        parsed = make_url(url)
+        if (
+            not parsed.drivername.startswith("sqlite")
+            or not parsed.database
+            or parsed.database == ":memory:"
+        ):
             return None
-        raw = url.replace("sqlite:///", "", 1)
-        if not raw or raw == ":memory:":
-            return None
-        path = Path(raw)
-        if not path.is_absolute():
-            path = PROJECT_ROOT / path
-        return path
+        path = Path(parsed.database)
+        return path if path.is_absolute() else PROJECT_ROOT / path
 
 
 __all__ = ["BackupResult", "BackupService"]

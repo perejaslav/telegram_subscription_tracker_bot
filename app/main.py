@@ -58,17 +58,35 @@ async def main() -> None:
     scheduler.start()
     logger.info("Scheduler started: daily reminder check at 09:00")
 
-    await stop_event.wait()
+    try:
+        stop_task = asyncio.create_task(stop_event.wait())
+        done, _ = await asyncio.wait({polling_task, stop_task}, return_when=asyncio.FIRST_COMPLETED)
+        if polling_task in done:
+            stop_task.cancel()
+            try:
+                await polling_task
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Telegram polling crashed; systemd will restart the service")
+                raise
+            else:
+                raise RuntimeError("Telegram polling stopped unexpectedly")
+        stop_task.cancel()
 
-    logger.info("Stopping polling and scheduler…")
-    scheduler.shutdown(wait=False)
-    await dp.stop_polling()
-    polling_task.cancel()
-    with suppress(asyncio.CancelledError):
-        await polling_task
-
-    await bot.session.close()
-    logger.info("Bot stopped cleanly")
+    finally:
+        logger.info("Stopping polling and scheduler…")
+        with suppress(Exception):
+            scheduler.shutdown(wait=False)
+        if not polling_task.done():
+            with suppress(Exception):
+                await dp.stop_polling()
+        if not polling_task.done():
+            polling_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await polling_task
+        await bot.session.close()
+        logger.info("Bot stopped cleanly")
 
 
 if __name__ == "__main__":

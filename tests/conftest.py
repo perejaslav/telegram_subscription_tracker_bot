@@ -48,7 +48,7 @@ class FakeBot:
     def __init__(self) -> None:
         self.sent: list[tuple[int, str]] = []
 
-    def send_message(self, chat_id: int, text: str, **_kwargs) -> None:
+    async def send_message(self, chat_id: int, text: str, **_kwargs) -> None:
         self.sent.append((chat_id, text))
 
 

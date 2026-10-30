@@ -10,6 +10,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.config.settings import settings
+from app.services.backup_service import BackupService
 from app.services.reminder_service import run_reminder_check
 
 logger = logging.getLogger(__name__)
@@ -28,12 +29,22 @@ def build_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=_resolve_timezone())
     scheduler.add_job(
         run_reminder_check,
-        trigger=CronTrigger(hour=9, minute=0),
+        trigger=CronTrigger(hour=9, minute=0, timezone=_resolve_timezone()),
+        misfire_grace_time=86400,
         kwargs={"bot": bot},
         id="daily_reminder_check",
         replace_existing=True,
         coalesce=True,
         max_instances=1,
+    )
+    scheduler.add_job(
+        BackupService().create_backup,
+        trigger=CronTrigger(hour=3, minute=0, timezone=_resolve_timezone()),
+        id="daily_sqlite_backup",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=86400,
     )
     return scheduler
 

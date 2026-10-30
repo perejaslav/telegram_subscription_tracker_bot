@@ -19,6 +19,7 @@ class ReminderLogRepository:
             ReminderLog.subscription_id == subscription_id,
             ReminderLog.reminder_date == reminder_date,
             ReminderLog.days_before == days_before,
+            ReminderLog.status == "sent",
         )
         return self.session.execute(stmt).first() is not None
 
