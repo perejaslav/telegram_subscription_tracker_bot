@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -49,6 +50,15 @@ from app.utils.validators import ValidationError
 logger = logging.getLogger(__name__)
 router = Router(name="subscriptions")
 
+
+class SearchFlow(StatesGroup):
+    query = State()
+
+
+class QuickAddFlow(StatesGroup):
+    details = State()
+
+
 PAGE_SIZE = 10
 
 # ---------------------------------------------------------------------------
@@ -66,10 +76,87 @@ async def start_add(message: Message, state: FSMContext) -> None:
     )
 
 
+@router.message(F.text == "⚡ Быстро добавить")
+async def quick_add_start(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(QuickAddFlow.details)
+    await message.answer(
+        "Введите одной строкой: название; стоимость; валюта; дата; период\n"
+        "Например: ChatGPT; 20; USD; 15.11.2026; monthly\n"
+        "Периоды: weekly, monthly, quarterly, yearly, manual."
+    )
+
+
+@router.message(QuickAddFlow.details)
+async def quick_add_save(message: Message, state: FSMContext) -> None:
+    fields = [field.strip() for field in (message.text or "").split(";")]
+    if len(fields) != 5:
+        await message.answer("Нужно ровно пять полей через точку с запятой.")
+        return
+    try:
+        payload = SubscriptionInput(
+            name=SubscriptionService.validate_field("name", fields[0]),
+            category="Другое",
+            price=SubscriptionService.validate_field("price", fields[1]),
+            currency=SubscriptionService.validate_field("currency", fields[2]),
+            next_billing_date=parse_user_date(fields[3]),
+            billing_period=SubscriptionService.validate_field("billing_period", fields[4]),
+        )
+        with SessionLocal() as session:
+            subscription = SubscriptionService(session).create(
+                message.from_user.id if message.from_user else 0, payload
+            )
+    except (ValidationError, ValueError) as exc:
+        await message.answer(f"Ошибка данных: {exc}")
+        return
+    await state.clear()
+    await message.answer(
+        f"✅ Подписка добавлена:\n{format_subscription_card(subscription)}",
+        reply_markup=build_main_menu(),
+    )
+
+
 @router.message(F.text == "📋 Мои подписки")
 async def list_subscriptions(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer("Показать:", reply_markup=status_filter_keyboard())
+
+
+@router.message(F.text == "🔎 Поиск подписок")
+async def search_start(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(SearchFlow.query)
+    await message.answer("Введите часть названия подписки:")
+
+
+@router.message(SearchFlow.query)
+async def search_results(message: Message, state: FSMContext) -> None:
+    with SessionLocal() as session:
+        try:
+            results = SubscriptionService(session).search(
+                message.from_user.id if message.from_user else 0, message.text or ""
+            )
+        except ValueError as exc:
+            await message.answer(str(exc))
+            return
+    await state.clear()
+    if not results:
+        await message.answer("Ничего не найдено.", reply_markup=build_main_menu())
+        return
+    await message.answer(
+        f"Найдено: {len(results)}",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=format_subscription_row_plain(item)[:60],
+                        callback_data=f"sub:{item.id}:open",
+                    )
+                ]
+                for item in results
+            ]
+        ),
+    )
 
 
 @router.message(F.text == "📦 Архив")

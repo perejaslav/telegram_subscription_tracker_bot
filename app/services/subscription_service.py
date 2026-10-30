@@ -8,6 +8,7 @@ from datetime import UTC, date
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database.models import Subscription, SubscriptionStatus
@@ -56,6 +57,24 @@ class SubscriptionService:
     def __init__(self, session: Session) -> None:
         self.session = session
         self.repo = SubscriptionRepository(session)
+
+    def search(self, user_id: int, query: str, *, limit: int = 20) -> list[Subscription]:
+        """Case-insensitive substring search, always scoped to one owner."""
+        term = query.strip()
+        if not 2 <= len(term) <= 100:
+            raise ValueError("Введите от 2 до 100 символов для поиска.")
+        # SQLite lower() only handles ASCII. Python casefold supports Cyrillic.
+        stmt = (
+            select(Subscription)
+            .where(Subscription.user_id == user_id)
+            .order_by(Subscription.name, Subscription.id)
+        )
+        normalized = term.casefold()
+        return [
+            subscription
+            for subscription in self.session.scalars(stmt)
+            if normalized in subscription.name.casefold()
+        ][: min(max(limit, 1), 50)]
 
     # ------------------------------------------------------------------
     # Validation helpers — exposed for the FSM steps in the bot layer.

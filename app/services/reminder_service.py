@@ -19,6 +19,7 @@ from app.database.engine import SessionLocal
 from app.database.models import ReminderLog, Subscription, SubscriptionStatus
 from app.database.repositories.reminder_log_repository import ReminderLogRepository
 from app.database.repositories.subscription_repository import SubscriptionRepository
+from app.services.user_preferences import get_preferences
 from app.utils.dates import days_until, format_date
 from app.utils.formatters import format_money
 
@@ -58,10 +59,9 @@ class ReminderService:
     ) -> ReminderOutcome:
         """Scan active subscriptions and dispatch reminders."""
         outcome = ReminderOutcome()
-        today = today or datetime.now(ZoneInfo(settings.timezone)).date()
-        reminder_days_set = set(
-            reminder_days if reminder_days is not None else settings.reminder_days
-        )
+        preferences = get_preferences(self.session, settings.admin_telegram_id)
+        today = today or datetime.now(ZoneInfo(preferences.timezone)).date()
+        reminder_days_set = set(reminder_days if reminder_days is not None else preferences.days)
 
         active_subs = self.sub_repo.list_by_status(
             settings.admin_telegram_id, SubscriptionStatus.ACTIVE

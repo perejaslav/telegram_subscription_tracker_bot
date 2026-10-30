@@ -7,10 +7,12 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
+from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.database.models import BillingPeriod, Subscription, SubscriptionStatus
+from app.database.models import BillingPeriod, Payment, Subscription, SubscriptionStatus
 from app.database.repositories.subscription_repository import SubscriptionRepository
 from app.utils.dates import days_until, format_date, shift_date
 from app.utils.formatters import format_money
@@ -50,6 +52,25 @@ class ReportService:
     def __init__(self, session: Session) -> None:
         self.session = session
         self.repo = SubscriptionRepository(session)
+
+    def actual_expenses(self, user_id: int, *, start: date, end: date) -> dict[str, Decimal]:
+        """Actual payments within an inclusive period, grouped by currency."""
+        if end < start:
+            raise ValueError("Конец периода раньше начала.")
+        query = (
+            select(Payment)
+            .join(Subscription, Payment.subscription_id == Subscription.id)
+            .where(Subscription.user_id == user_id, Payment.paid_at.between(start, end))
+        )
+        totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+        for payment in self.session.scalars(query):
+            exact = (
+                Decimal(payment.amount_minor) / 100
+                if payment.amount_minor is not None
+                else Decimal(str(payment.amount))
+            )
+            totals[payment.currency] += exact
+        return dict(sorted(totals.items()))
 
     # ------------------------------------------------------------------
     def summary(self, user_id: int, *, today: date | None = None) -> SummaryReport:

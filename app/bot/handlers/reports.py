@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from aiogram import F, Router
 from aiogram.types import (
     CallbackQuery,
@@ -14,9 +17,40 @@ from app.bot.keyboards.main_menu import build_main_menu
 from app.database.engine import SessionLocal
 from app.database.models import Subscription
 from app.services.report_service import ReportService
+from app.services.user_preferences import get_preferences
 from app.utils.formatters import category_options, format_subscription_row_plain
 
 router = Router(name="reports")
+
+
+@router.message(F.text == "💰 Расходы")
+async def show_expenses(message: Message) -> None:
+    with SessionLocal() as session:
+        preferences = get_preferences(session, message.from_user.id if message.from_user else 0)
+        today = datetime.now(ZoneInfo(preferences.timezone)).date()
+        report = ReportService(session)
+        month = report.actual_expenses(
+            message.from_user.id if message.from_user else 0,
+            start=today.replace(day=1),
+            end=today,
+        )
+        year = report.actual_expenses(
+            message.from_user.id if message.from_user else 0,
+            start=today.replace(month=1, day=1),
+            end=today,
+        )
+
+    def render(totals: dict) -> str:
+        return (
+            "\n".join(f"• {value:.2f} {currency}" for currency, value in totals.items())
+            or "Нет оплат"
+        )
+
+    await message.answer(
+        "💰 <b>Фактические расходы</b>\n\n"
+        f"За месяц:\n{render(month)}\n\nС начала года:\n{render(year)}",
+        reply_markup=build_main_menu(),
+    )
 
 
 @router.message(F.text == "📊 Сводка")
